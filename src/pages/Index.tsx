@@ -4,7 +4,7 @@ import { Hero } from "@/components/seo/Hero";
 import { LoadingExperience } from "@/components/seo/LoadingExperience";
 import { Dashboard } from "@/components/seo/Dashboard";
 import { ErrorState } from "@/components/seo/ErrorState";
-import { normalizeAudit, demoAudit, type NormalizedAudit } from "@/lib/seo-types";
+import { normalizeAudit, demoAudit, saveHistoryEntry, type NormalizedAudit } from "@/lib/seo-types";
 import { toast } from "@/hooks/use-toast";
 
 const WEBHOOK_URL = "https://dhina007.app.n8n.cloud/webhook/seo-audit-advanced";
@@ -17,6 +17,9 @@ type View =
 
 const Index = () => {
   const [view, setView] = useState<View>({ kind: "idle" });
+  const [historyKey, setHistoryKey] = useState(0);
+
+  const showAudit = (audit: NormalizedAudit) => setView({ kind: "results", audit });
 
   const runAudit = async (url: string, keyword?: string) => {
     setView({ kind: "loading", url });
@@ -38,23 +41,23 @@ const Index = () => {
       let data: unknown = null;
       try { data = text ? JSON.parse(text) : null; } catch { data = text; }
 
-      const audit = normalizeAudit(data, url);
+      const audit = normalizeAudit(data, url, keyword);
       const isEmpty =
         !audit.overallScore &&
         audit.pages.length === 0 &&
         audit.actions.length === 0 &&
         !audit.insights.summary;
 
+      const finalAudit = isEmpty ? demoAudit(url, keyword) : audit;
       if (isEmpty) {
-        // Webhook returned nothing useful — show a demo so the experience never breaks.
         toast({
           title: "Showing sample report",
           description: "The audit service didn't return structured data yet. Here's a sample of what your report will look like.",
         });
-        setView({ kind: "results", audit: demoAudit(url) });
-      } else {
-        setView({ kind: "results", audit });
       }
+      saveHistoryEntry(finalAudit);
+      setHistoryKey((k) => k + 1);
+      setView({ kind: "results", audit: finalAudit });
     } catch (err: unknown) {
       const message =
         err instanceof DOMException && err.name === "AbortError"
@@ -73,6 +76,8 @@ const Index = () => {
       <Header
         showNewAudit={view.kind === "results" || view.kind === "error"}
         onNewAudit={reset}
+        historyRefreshKey={historyKey}
+        onOpenHistoryEntry={showAudit}
       />
       <main>
         {view.kind === "idle" && <Hero onSubmit={runAudit} />}
