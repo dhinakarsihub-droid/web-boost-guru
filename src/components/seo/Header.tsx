@@ -1,13 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { Gauge, Moon, Sun, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { HistorySidebar } from "./HistorySidebar";
+import type { NormalizedAudit } from "@/lib/seo-types";
 
 interface Props {
   showNewAudit?: boolean;
   onNewAudit?: () => void;
+  historyRefreshKey?: number;
+  onOpenHistoryEntry?: (audit: NormalizedAudit) => void;
 }
 
-export const Header = ({ showNewAudit, onNewAudit }: Props) => {
+export const Header = ({ showNewAudit, onNewAudit, historyRefreshKey, onOpenHistoryEntry }: Props) => {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
@@ -38,6 +42,9 @@ export const Header = ({ showNewAudit, onNewAudit }: Props) => {
           </div>
         </a>
         <div className="flex items-center gap-2">
+          {onOpenHistoryEntry && (
+            <HistorySidebar refreshKey={historyRefreshKey} onOpen={onOpenHistoryEntry} />
+          )}
           {showNewAudit && (
             <Button onClick={onNewAudit} variant="outline" size="sm" className="gap-2">
               <RotateCcw className="h-4 w-4" />

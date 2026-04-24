@@ -5,6 +5,7 @@ import { PagesTable } from "./PagesTable";
 import { Performance } from "./Performance";
 import { Insights } from "./Insights";
 import { ActionPlan } from "./ActionPlan";
+import { KeywordMatches } from "./KeywordMatches";
 import { Globe } from "lucide-react";
 
 export const Dashboard = ({ audit }: { audit: NormalizedAudit }) => (
@@ -17,6 +18,7 @@ export const Dashboard = ({ audit }: { audit: NormalizedAudit }) => (
     <SummaryCards audit={audit} />
     <IssueBreakdown audit={audit} />
     <Performance audit={audit} />
+    <KeywordMatches audit={audit} />
     <Insights audit={audit} />
     <PagesTable audit={audit} />
     <ActionPlan audit={audit} />
