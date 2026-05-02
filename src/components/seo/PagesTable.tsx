@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import type { PageRow, NormalizedAudit } from "@/lib/seo-types";
+import { scorePageForKeyword } from "@/lib/seo-types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown, Search, Check, X, AlertTriangle } from "lucide-react";
+import { ArrowUpDown, Search, Check, X, AlertTriangle, Target } from "lucide-react";
 
-type SortKey = "url" | "score" | "titleStatus" | "h1Status";
+type SortKey = "url" | "score" | "titleStatus" | "h1Status" | "relevance";
+type FilterKey = "all" | "issues" | "ok" | "keyword";
 
 const StatusBadge = ({ status, kind }: { status: string; kind: "title" | "h1" }) => {
   const ok = status === "ok";
