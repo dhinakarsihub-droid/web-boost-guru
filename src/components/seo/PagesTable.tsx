@@ -39,27 +39,64 @@ const ScoreBar = ({ score }: { score: number }) => {
 };
 
 export const PagesTable = ({ audit }: { audit: NormalizedAudit }) => {
+  const keyword = audit.keyword?.trim() ?? "";
+  const hasKeyword = keyword.length > 0;
+
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "issues" | "ok">("all");
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [sortKey, setSortKey] = useState<SortKey>("score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // Precompute relevance per URL when a keyword exists.
+  const relevanceByUrl = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!hasKeyword) return map;
+    for (const p of audit.pages) {
+      map.set(p.url, scorePageForKeyword(p, keyword).score);
+    }
+    return map;
+  }, [audit.pages, keyword, hasKeyword]);
 
   const rows = useMemo(() => {
     let r = audit.pages.filter((p) => p.url.toLowerCase().includes(query.toLowerCase()));
     if (filter === "issues") r = r.filter((p) => p.titleStatus !== "ok" || p.h1Status !== "ok" || p.score < 70);
     if (filter === "ok") r = r.filter((p) => p.titleStatus === "ok" && p.h1Status === "ok" && p.score >= 70);
+    if (filter === "keyword" && hasKeyword) {
+      r = r.filter((p) => (relevanceByUrl.get(p.url) ?? 0) > 0);
+    }
+
+    const effectiveSortKey: SortKey =
+      filter === "keyword" && hasKeyword && sortKey !== "relevance" ? "relevance" : sortKey;
+    const effectiveDir: "asc" | "desc" =
+      filter === "keyword" && hasKeyword && sortKey !== "relevance" ? "desc" : sortDir;
+
     r = [...r].sort((a, b) => {
-      const va = a[sortKey];
-      const vb = b[sortKey];
+      let va: string | number;
+      let vb: string | number;
+      if (effectiveSortKey === "relevance") {
+        va = relevanceByUrl.get(a.url) ?? 0;
+        vb = relevanceByUrl.get(b.url) ?? 0;
+      } else {
+        va = a[effectiveSortKey];
+        vb = b[effectiveSortKey];
+      }
       const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
-      return sortDir === "asc" ? cmp : -cmp;
+      return effectiveDir === "asc" ? cmp : -cmp;
     });
     return r;
-  }, [audit.pages, query, filter, sortKey, sortDir]);
+  }, [audit.pages, query, filter, sortKey, sortDir, hasKeyword, relevanceByUrl]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
-    else { setSortKey(key); setSortDir(key === "score" ? "asc" : "asc"); }
+    else { setSortKey(key); setSortDir(key === "relevance" || key === "score" ? "desc" : "asc"); }
+  };
+
+  const setFilterKey = (f: FilterKey) => {
+    setFilter(f);
+    if (f === "keyword" && hasKeyword) {
+      setSortKey("relevance");
+      setSortDir("desc");
+    }
   };
 
   const SortBtn = ({ k, children }: { k: SortKey; children: React.ReactNode }) => (
@@ -74,11 +111,17 @@ export const PagesTable = ({ audit }: { audit: NormalizedAudit }) => {
 
   if (audit.pages.length === 0) return null;
 
+  const showRelevanceCol = filter === "keyword" && hasKeyword;
+  const filterOptions: FilterKey[] = hasKeyword ? ["all", "issues", "ok", "keyword"] : ["all", "issues", "ok"];
+
   return (
     <section className="space-y-4">
       <div>
         <h2 className="font-display text-xl font-bold">Page-Level Analysis</h2>
-        <p className="text-sm text-muted-foreground mt-1">Per-URL breakdown of titles, headings, and SEO score</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Per-URL breakdown of titles, headings, and SEO score
+          {hasKeyword && <> · keyword <span className="font-mono text-foreground">{keyword}</span></>}
+        </p>
       </div>
 
       <div className="rounded-2xl border bg-card shadow-card overflow-hidden">
@@ -93,15 +136,16 @@ export const PagesTable = ({ audit }: { audit: NormalizedAudit }) => {
             />
           </div>
           <div className="flex gap-1 p-1 rounded-lg bg-muted">
-            {(["all", "issues", "ok"] as const).map((f) => (
+            {filterOptions.map((f) => (
               <Button
                 key={f}
                 size="sm"
                 variant={filter === f ? "default" : "ghost"}
-                onClick={() => setFilter(f)}
-                className={`h-7 px-3 text-xs capitalize ${filter === f ? "" : "hover:bg-background"}`}
+                onClick={() => setFilterKey(f)}
+                className={`h-7 px-3 text-xs capitalize gap-1 ${filter === f ? "" : "hover:bg-background"}`}
               >
-                {f === "ok" ? "Healthy" : f}
+                {f === "keyword" && <Target className="h-3 w-3" />}
+                {f === "ok" ? "Healthy" : f === "keyword" ? "Keyword matches" : f}
               </Button>
             ))}
           </div>
@@ -115,6 +159,9 @@ export const PagesTable = ({ audit }: { audit: NormalizedAudit }) => {
                 <th className="px-4 py-3 font-semibold"><SortBtn k="titleStatus">Title</SortBtn></th>
                 <th className="px-4 py-3 font-semibold"><SortBtn k="h1Status">H1</SortBtn></th>
                 <th className="px-4 py-3 font-semibold"><SortBtn k="score">Score</SortBtn></th>
+                {showRelevanceCol && (
+                  <th className="px-4 py-3 font-semibold"><SortBtn k="relevance">Relevance</SortBtn></th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -124,12 +171,29 @@ export const PagesTable = ({ audit }: { audit: NormalizedAudit }) => {
                   <td className="px-4 py-3"><StatusBadge status={p.titleStatus} kind="title" /></td>
                   <td className="px-4 py-3"><StatusBadge status={p.h1Status} kind="h1" /></td>
                   <td className="px-4 py-3"><ScoreBar score={p.score} /></td>
+                  {showRelevanceCol && (
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 min-w-[120px]">
+                        <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full bg-primary transition-all"
+                            style={{ width: `${relevanceByUrl.get(p.url) ?? 0}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-xs tabular-nums w-8 text-right">
+                          {relevanceByUrl.get(p.url) ?? 0}
+                        </span>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                    No pages match your filters.
+                  <td colSpan={showRelevanceCol ? 5 : 4} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    {filter === "keyword" && hasKeyword
+                      ? `No pages match "${keyword}".`
+                      : "No pages match your filters."}
                   </td>
                 </tr>
               )}
